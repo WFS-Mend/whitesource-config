@@ -11,7 +11,7 @@ jobs:
   mendscan:
     env:
       GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      GITHUB_USER: ${{github.actor}}
+      GITHUB_USERNAME: ${{github.actor}}
       WS_APIKEY: ${{secrets.MEND_APIKEY}}
       WS_USERKEY: ${{secrets.MEND_USERKEY}}
       WS_PRODUCTNAME: GH_${{github.event.repository.name}}
