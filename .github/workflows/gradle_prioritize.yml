@@ -1,0 +1,97 @@
+name: Mend Gradle Prioritize
+
+on:
+  workflow_call:
+    inputs:
+      gradle-cmd:
+        required: true
+        type: string
+
+jobs:
+  mendscan:
+    env:
+      WS_APIKEY: ${{secrets.MEND_APIKEY}}
+      WS_USERKEY: ${{secrets.MEND_USERKEY}}
+      WS_PRODUCTNAME: GH_${{github.event.repository.name}}
+      WS_PROJECTNAME: GH_${{github.event.repository.name}}_${{github.ref_name}}
+      WS_WSS_URL: https://saas.mend.io/agent
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'adopt'
+
+    - name: Build with Gradle
+      run: ${{inputs.gradle-cmd}}
+      env:
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        GITHUB_USERNAME: ${{github.actor}}
+      
+    - name: Mend Unified Agent Scan
+      env:
+        WS_ENABLEIMPACTANALYSIS: true
+        WS_RESOLVEALLDEPENDENCIES: false
+        WS_GRADLE_RESOLVEDEPENDENCIES: true
+        WS_GRADLE_AGGREGATEMODULES: true
+        WS_GENERATEPROJECTDETAILSJSON: true
+      run: |
+        echo Downloading Mend Unified Agent
+        curl -LJO https://unified-agent.s3.amazonaws.com/wss-unified-agent.jar
+        if [[ "$(curl -sL https://unified-agent.s3.amazonaws.com/wss-unified-agent.jar.sha256)" != "$(sha256sum wss-unified-agent.jar)" ]]
+        then
+          echo "Integrity Check Failed"
+        else
+          echo "Integrity Check Passed"
+          echo Starting Unified Agent Scan
+          WARFILE=$(find ./build/libs -type f -wholename "*.war")
+          if [ -z "$WARFILE" ]
+          then
+            JARFILE=$(find ./build/libs -type f -wholename "*.jar")
+            echo $JARFILE will be added to appPath
+            java -jar wss-unified-agent.jar -appPath $JARFILE -d ./
+          else
+            echo $WARFILE will be added to appPath
+            java -jar wss-unified-agent.jar -appPath $WARFILE -d ./
+          fi
+        fi
+
+    - name: Check Project State
+      run: |
+        curl -LJO https://raw.githubusercontent.com/mend-toolkit/mend-examples/main/Scripts/check-project-state.sh
+        chmod +x check-project-state.sh && ./check-project-state.sh
+
+    - name: Tag Project with repoFullName
+      run: |
+        export WS_PROJECTTOKEN=$(jq -r '.projects | .[] | .projectToken' ./whitesource/scanProjectDetails.json)
+        export WS_URL=$(echo $WS_WSS_URL | awk -F "agent" '{print $1}')
+        curl -X POST "${WS_URL}/api/v1.3" -H "Content-Type: application/json" \
+        -d '{ "requestType":"saveProjectTag", "userKey":"'${WS_USERKEY}'", "projectToken":"'${WS_PROJECTTOKEN}'", "tagKey":"repoLocation", "tagValue":"'${{github.server_url}}/${{github.repository}}/tree/${{github.ref_name}}'" }'
+
+    - name: Mend Report Generation
+      run: |
+        export WS_PROJECTTOKEN=$(jq -r '.projects | .[] | .projectToken' ./whitesource/scanProjectDetails.json)
+        export WS_URL=$(echo $WS_WSS_URL | awk -F "agent" '{print $1}')
+        curl -o ./whitesource/riskreport.pdf -X POST "${WS_URL}/api/v1.3" -H "Content-Type: application/json"  -d '{"requestType":"getProjectRiskReport","userKey":"'${WS_USERKEY}'","projectToken":"'${WS_PROJECTTOKEN}'"}'
+        curl -o ./whitesource/inventoryreport.xlsx -X POST "${WS_URL}/api/v1.3" -H "Content-Type: application/json"  -d '{"requestType":"getProjectInventoryReport","userKey":"'${WS_USERKEY}'","projectToken":"'${WS_PROJECTTOKEN}'"}'
+        curl -o ./whitesource/duediligencereport.xlsx -X POST "${WS_URL}/api/v1.3" -H "Content-Type: application/json"  -d '{"requestType":"getProjectDueDiligenceReport","userKey":"'${WS_USERKEY}'","projectToken":"'${WS_PROJECTTOKEN}'"}'
+        curl -o ./whitesource/spdxreport.json -X POST "${WS_URL}/api/v1.3" -H "Content-Type: application/json"  -d '{"requestType":"getProjectSpdxReport","userKey":"'${WS_USERKEY}'","projectToken":"'${WS_PROJECTTOKEN}'","format":"json"}'
+
+    - name: 'Upload WhiteSource folder'
+      uses: actions/upload-artifact@v3
+      with:
+        name: WhiteSource
+        path: whitesource
+        retention-days: 1
+    - name: 'Upload WhiteSource folder if failure'
+      uses: actions/upload-artifact@v3
+      if: failure()
+      with:
+        name: WhiteSource
+        path: whitesource
+        retention-days: 1
