@@ -52,7 +52,7 @@ jobs:
           WARFILE=$(find ./build/libs -type f -wholename "*.war")
           if [ -z "$WARFILE" ]
           then
-            JARFILE=$(find ./build/libs -type f -wholename "*.jar")
+            JARFILE=$(find ./build/libs -type f -wholename "*plain.jar")
             echo $JARFILE will be added to appPath
             java -jar wss-unified-agent.jar -appPath $JARFILE -d ./
           else
