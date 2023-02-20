@@ -10,8 +10,6 @@ on:
 jobs:
   mendscan:
     env:
-      GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-      GITHUB_USERNAME: ${{github.actor}}
       WS_APIKEY: ${{secrets.MEND_APIKEY}}
       WS_USERKEY: ${{secrets.MEND_USERKEY}}
       WS_PRODUCTNAME: GH_${{github.event.repository.name}}
@@ -31,6 +29,9 @@ jobs:
 
     - name: Build with Maven
       run: ${{inputs.mvn-cmd}}
+      env:
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        GITHUB_USERNAME: ${{github.actor}}
       
     - name: Mend Unified Agent Scan
       env:
