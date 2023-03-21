@@ -30,7 +30,7 @@
       "enabled": false,
       "minVulnerabilityScore": 7,
       "maxVulnerabilityScore": 10
-      }
+      },
     "enableRenovate": true,
     "dependencyDashboard": true,
     "extends": [
